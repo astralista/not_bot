@@ -7,6 +7,6 @@ services:
     container_name: medication_bot
     restart: unless-stopped
     volumes:
-      - ./data:/app/data  # Маунтим папку с БД
+      - ./data:/app/data:rw
     env_file:
-      - .env             # Используем переменные из .env
+      - .env
