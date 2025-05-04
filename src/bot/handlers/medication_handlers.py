@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ContextTypes, ConversationHandler
 
 from ...core.database import Database
-from ...utils.validators import validate_date, validate_number, validate_unit
+from ...utils.validators import validate_date, validate_number, validate_unit, validate_zodiac_sign
 from ...utils.helpers import format_medication_info
 
 # Состояния для ConversationHandler
@@ -14,8 +14,9 @@ from ...utils.helpers import format_medication_info
     NAME, DOSE, INTAKES, START_DATE,
     DURATION_VALUE, DURATION_UNIT,
     BREAK_VALUE, BREAK_UNIT, CYCLES,
-    EDIT_CHOICE, EDIT_FIELD
-) = range(11)
+    EDIT_CHOICE, EDIT_FIELD,
+    ZODIAC_SIGN
+) = range(12)
 
 
 class MedicationHandlers:
@@ -40,14 +41,78 @@ class MedicationHandlers:
         Args:
             update (Update): Объект обновления
             context (ContextTypes.DEFAULT_TYPE): Контекст
+            
+        Returns:
+            int: Следующее состояние разговора или None
         """
-        keyboard = [["/add", "/list"], ["/edit", "/delete"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text(
-            "💊 Бот-напоминатель о лекарствах\n\n"
-            "Выберите действие:",
-            reply_markup=reply_markup
-        )
+        user_id = update.effective_user.id
+        zodiac_sign = self.db.get_user_zodiac(user_id)
+        
+        if zodiac_sign:
+            # Если пользователь уже есть в базе, показываем обычное меню
+            keyboard = [["/add", "/list"], ["/edit", "/delete"]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            await update.message.reply_text(
+                "💊 Бот-напоминатель о лекарствах\n\n"
+                "Выберите действие:",
+                reply_markup=reply_markup
+            )
+            return ConversationHandler.END
+        else:
+            # Если пользователя нет в базе, начинаем знакомство
+            await update.message.reply_text(
+                "👋 Привет! Я бот-напоминатель о лекарствах.\n\n"
+                "Давайте познакомимся! Какой у вас знак зодиака?\n\n"
+                "Доступные знаки: овен, телец, близнецы, рак, лев, дева, "
+                "весы, скорпион, стрелец, козерог, водолей, рыбы"
+            )
+            return ZODIAC_SIGN
+            
+    async def set_user_zodiac(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Обработка ввода знака зодиака при первом запуске
+        
+        Args:
+            update (Update): Объект обновления
+            context (ContextTypes.DEFAULT_TYPE): Контекст
+        
+        Returns:
+            int: Следующее состояние разговора
+        """
+        zodiac_input = update.message.text.strip().lower()
+        
+        if not validate_zodiac_sign(zodiac_input):
+            await update.message.reply_text(
+                "❌ Неверный знак зодиака!\n\n"
+                "Доступные знаки: овен, телец, близнецы, рак, лев, дева, "
+                "весы, скорпион, стрелец, козерог, водолей, рыбы\n\n"
+                "Пожалуйста, введите ваш знак зодиака:"
+            )
+            return ZODIAC_SIGN
+        
+        try:
+            user_id = update.effective_user.id
+            self.db.add_user_settings(user_id, zodiac_input)
+            
+            await update.message.reply_text(
+                f"♌ Отлично! Ваш знак зодиака: {zodiac_input.capitalize()}\n\n"
+                f"Теперь вы будете получать персональный гороскоп!"
+            )
+            
+            # Показываем основное меню
+            keyboard = [["/add", "/list"], ["/edit", "/delete"]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            await update.message.reply_text(
+                "💊 Бот-напоминатель о лекарствах\n\n"
+                "Выберите действие:",
+                reply_markup=reply_markup
+            )
+            return ConversationHandler.END
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при сохранении знака зодиака: {e}")
+            await update.message.reply_text("❌ Произошла ошибка при сохранении. Попробуйте позже.")
+            return ConversationHandler.END
     
     # Методы для добавления лекарств
     async def add_medication(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

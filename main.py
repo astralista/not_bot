@@ -13,7 +13,7 @@ from telegram.ext import (
 
 from src.core.database import Database
 from src.core.logger import logger
-from src.bot.handlers.medication_handlers import MedicationHandlers, NAME, DOSE, INTAKES, START_DATE, DURATION_VALUE, DURATION_UNIT, BREAK_VALUE, BREAK_UNIT, CYCLES, EDIT_CHOICE, EDIT_FIELD
+from src.bot.handlers.medication_handlers import MedicationHandlers, NAME, DOSE, INTAKES, START_DATE, DURATION_VALUE, DURATION_UNIT, BREAK_VALUE, BREAK_UNIT, CYCLES, EDIT_CHOICE, EDIT_FIELD, ZODIAC_SIGN
 from src.bot.handlers.notification_handlers import NotificationHandlers
 from src.bot.services.notification_service import NotificationService
 from src.bot.services.scheduler_service import SchedulerService
@@ -31,8 +31,15 @@ def setup_handlers(application, db, logger):
     med_handlers = MedicationHandlers(db, logger)
     notif_handlers = NotificationHandlers(db, logger)
     
-    # Команда /start с кнопками
-    application.add_handler(CommandHandler("start", med_handlers.start))
+    # Команда /start с обработкой знака зодиака при первом запуске
+    start_conv = ConversationHandler(
+        entry_points=[CommandHandler("start", med_handlers.start)],
+        states={
+            ZODIAC_SIGN: [MessageHandler(filters.TEXT & ~filters.COMMAND, med_handlers.set_user_zodiac)],
+        },
+        fallbacks=[CommandHandler("cancel", med_handlers.cancel)],
+    )
+    application.add_handler(start_conv)
     
     # Добавление лекарства
     add_conv = ConversationHandler(
