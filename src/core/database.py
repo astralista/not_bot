@@ -1,12 +1,13 @@
 import sqlite3
 from sqlite3 import Error
-from logger_config import logger
+from ..core.logger import logger
 
 class Database:
     def __init__(self, db_file):
         self.logger = logger.getChild('Database')
         self.conn = self.create_connection(db_file)
         self.create_table()
+        self.create_user_settings_table()  # Создаем таблицу настроек при инициализации
 
     def create_connection(self, db_file):
         conn = None
@@ -36,6 +37,17 @@ class Database:
         self.conn.execute(sql)
         self.conn.commit()
 
+    def create_user_settings_table(self):
+        """Создает таблицу для настроек пользователя, если её нет"""
+        sql = """
+        CREATE TABLE IF NOT EXISTS user_settings (
+            user_id INTEGER PRIMARY KEY,
+            zodiac_sign TEXT
+        );
+        """
+        self.conn.execute(sql)
+        self.conn.commit()
+
     def add_medication(self, user_id, name, dose_per_intake, intakes_per_day, start_date,
                       duration_value, duration_unit, break_value, break_unit, cycles=1):
         sql = """
@@ -59,55 +71,6 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM medications WHERE id=?", (med_id,))
         return cursor.fetchone()
-
-    def update_medication(self, med_id: int, **kwargs):
-        """Обновляет данные лекарства с логированием"""
-        if not kwargs:
-            self.logger.error("Пустые данные для обновления")
-            raise ValueError("Нет данных для обновления")
-
-        self.logger.info(f"Начало обновления medication_id={med_id}, данные: {kwargs}")
-
-        try:
-            cursor = self.conn.cursor()
-            set_clause = ", ".join([f"{k} = ?" for k in kwargs.keys()])
-            sql = f"UPDATE medications SET {set_clause} WHERE id = ?"
-            params = list(kwargs.values()) + [med_id]
-
-            self.logger.debug(f"Выполняем SQL: {sql} с параметрами: {params}")
-
-            cursor.execute(sql, params)
-            self.conn.commit()
-
-            self.logger.info(f"Обновлено строк: {cursor.rowcount}")
-
-            if cursor.rowcount == 0:
-                self.logger.warning("Ни одна запись не была обновлена")
-                raise ValueError("Запись не найдена или данные не изменились")
-
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            self.logger.error(f"Ошибка SQL при обновлении: {str(e)}")
-            raise
-        except Exception as e:
-            self.conn.rollback()
-            self.logger.error(f"Неожиданная ошибка: {str(e)}")
-            raise
-
-    def delete_medication(self, med_id):
-        self.conn.execute("DELETE FROM medications WHERE id=?", (med_id,))
-        self.conn.commit()
-
-    def get_all_medications(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM medications")
-        return cursor.fetchall()
-
-    def get_medication_field_names(self):
-        """Возвращает список полей лекарства"""
-        cursor = self.conn.cursor()
-        cursor.execute("PRAGMA table_info(medications)")
-        return [column[1] for column in cursor.fetchall()]
 
     def update_medication(self, med_id: int, **kwargs):
         """Обновляет данные лекарства с проверкой полей"""
@@ -141,14 +104,42 @@ class Database:
             self.conn.rollback()
             raise Exception(f"Ошибка базы данных: {str(e)}")
 
-        def get_medication_by_id(self, med_id: int):
-            """Получает лекарство по ID с подробным логированием"""
-            try:
-                cursor = self.conn.cursor()
-                cursor.execute("SELECT * FROM medications WHERE id = ?", (med_id,))
-                result = cursor.fetchone()
-                self.logger.info(f"Результат запроса лекарства {med_id}: {result}")
-                return result
-            except Exception as e:
-                self.logger.error(f"Ошибка при запросе лекарства: {str(e)}")
-                return None
+    def delete_medication(self, med_id):
+        self.conn.execute("DELETE FROM medications WHERE id=?", (med_id,))
+        self.conn.commit()
+
+    def get_all_medications(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM medications")
+        return cursor.fetchall()
+
+    def get_all_users(self):
+        """Возвращает список ID пользователей (чисел), которые добавили лекарства"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT DISTINCT user_id FROM medications")
+        return [user_id for (user_id,) in cursor.fetchall()]  # Явное распаковывание кортежа
+
+    def get_medication_field_names(self):
+        """Возвращает список полей лекарства"""
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(medications)")
+        return [column[1] for column in cursor.fetchall()]
+
+    def add_user_settings(self, user_id: int, zodiac_sign: str):
+        """Сохраняет настройки пользователя"""
+        sql = """
+        INSERT OR REPLACE INTO user_settings (user_id, zodiac_sign)
+        VALUES (?, ?)
+        """
+        self.conn.execute(sql, (user_id, zodiac_sign))
+        self.conn.commit()
+
+    def get_user_zodiac(self, user_id: int) -> str:
+        """Возвращает знак зодиака пользователя"""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT zodiac_sign FROM user_settings WHERE user_id = ?",
+            (user_id,)
+        )
+        result = cursor.fetchone()
+        return result[0] if result else None
