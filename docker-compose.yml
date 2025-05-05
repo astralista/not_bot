@@ -2,7 +2,6 @@ version: '3.8'
 
 services:
   medbot:
-    platform: linux/amd64
     build: .
     container_name: medication_bot
     restart: unless-stopped

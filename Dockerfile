@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Инициализация БД при сборке
-RUN python init_db.py
+# Создаем директорию для данных, если её нет
+RUN mkdir -p /app/data
 
-CMD ["python", "bot.py"]
+CMD ["python", "main.py"]
