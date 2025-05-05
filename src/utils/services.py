@@ -72,7 +72,7 @@ class Services:
     @staticmethod
     def get_horoscope(sign: str) -> str:
         """
-        Парсинг гороскопа
+        Парсинг гороскопа с новым селектором
         
         Args:
             sign (str): Знак зодиака
@@ -96,12 +96,33 @@ class Services:
         }
 
         try:
-            sign_en = signs.get(sign.lower(), 'aries')  # По умолчанию овен
+            sign_en = signs.get(sign.lower(), 'aries')
             url = f"https://horo.mail.ru/prediction/{sign_en}/today/"
-            page = requests.get(url)
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            page = requests.get(url, headers=headers, timeout=10)
+            page.raise_for_status()
+            
             soup = BeautifulSoup(page.content, 'html.parser')
-            text = soup.find('div', class_='article__text').text.strip()
-            return f"♌ Гороскоп для {sign}:\n{text[:500]}..."  # Ограничиваем длину
+            
+            # Новый селектор на основе предоставленной структуры
+            main_content = soup.find('main', {'itemprop': 'articleBody'})
+            
+            if main_content:
+                # Собираем все параграфы внутри div с классом 'b6a5d4949c'
+                paragraphs = []
+                for div in main_content.find_all('div', class_='b6a5d4949c'):
+                    paragraphs.extend(p.text.strip() for p in div.find_all('p'))
+                
+                if paragraphs:
+                    text = '\n\n'.join(paragraphs)
+                    return f"♋ Гороскоп для {sign} на сегодня:\n\n{text}"
+            
+            return f"Не удалось найти текст гороскопа для {sign}"
+                
         except Exception as e:
             logging.error(f"Horoscope error: {e}")
             return f"Не удалось получить гороскоп для {sign}"
