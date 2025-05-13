@@ -1,111 +1,118 @@
 import pytest
-from datetime import datetime
-from src.utils.validators import (
-    validate_date,
-    validate_number,
-    validate_unit,
-    validate_zodiac_sign
-)
+from src.utils.validators import validate_date, validate_number, validate_unit, validate_zodiac_sign
 
 
-class TestValidateDate:
-    """Tests for validate_date function"""
+class TestValidators:
+    """Tests for validator functions"""
     
-    def test_valid_date(self):
-        """Test with valid date format"""
-        assert validate_date("2025-01-01") is True
-        assert validate_date("2023-12-31") is True
-        assert validate_date("2024-02-29") is True  # Leap year
+    def test_validate_date_valid(self):
+        """Test validate_date with valid dates"""
+        valid_dates = [
+            "2025-01-01",
+            "2025-12-31",
+            "2025-02-28",
+            "2024-02-29",  # Leap year
+        ]
+        
+        for date in valid_dates:
+            assert validate_date(date) is True
     
-    def test_invalid_date_format(self):
-        """Test with invalid date format"""
-        assert validate_date("01-01-2025") is False
-        assert validate_date("2025/01/01") is False
-        assert validate_date("2025.01.01") is False
-        assert validate_date("25-01-01") is False
-        assert validate_date("01-Jan-2025") is False
+    def test_validate_date_invalid_format(self):
+        """Test validate_date with invalid format"""
+        invalid_formats = [
+            "01-01-2025",  # Wrong order
+            "2025/01/01",  # Wrong separator
+            "2025.01.01",  # Wrong separator
+            "25-01-01",    # Incomplete year
+            "2025-1-01",   # Missing leading zero
+            "2025-01-1",   # Missing leading zero
+            "2025-01",     # Missing day
+            "01-01",       # Missing year
+            "2025-01-01 ",  # Extra space
+            " 2025-01-01",  # Extra space
+            "",            # Empty string
+        ]
+        
+        for date in invalid_formats:
+            assert validate_date(date) is False
     
-    def test_invalid_date_values(self):
-        """Test with invalid date values"""
-        assert validate_date("2025-13-01") is False  # Invalid month
-        assert validate_date("2025-01-32") is False  # Invalid day
-        assert validate_date("2023-02-29") is False  # Not a leap year
-        assert validate_date("2025-04-31") is False  # April has 30 days
+    def test_validate_date_invalid_values(self):
+        """Test validate_date with invalid date values"""
+        invalid_values = [
+            "2025-00-01",  # Month 0
+            "2025-13-01",  # Month 13
+            "2025-01-00",  # Day 0
+            "2025-01-32",  # Day 32
+            "2025-04-31",  # April has 30 days
+            "2025-02-29",  # Not a leap year
+            "2025-02-30",  # February never has 30 days
+        ]
+        
+        for date in invalid_values:
+            assert validate_date(date) is False
     
-    def test_non_date_strings(self):
-        """Test with non-date strings"""
-        assert validate_date("") is False
-        assert validate_date("abc") is False
-        assert validate_date("2025-ab-01") is False
-        assert validate_date("2025-01-ab") is False
-
-
-class TestValidateNumber:
-    """Tests for validate_number function"""
-    
-    def test_valid_numbers(self):
-        """Test with valid numbers"""
+    def test_validate_number_valid(self):
+        """Test validate_number with valid numbers"""
+        # Default range (min=1, max=None)
         assert validate_number("1") is True
-        assert validate_number("10") is True
+        assert validate_number("5") is True
         assert validate_number("100") is True
-    
-    def test_with_min_value(self):
-        """Test with minimum value constraint"""
+        
+        # Custom min
         assert validate_number("5", min_val=5) is True
-        assert validate_number("5", min_val=6) is False
         assert validate_number("10", min_val=5) is True
-    
-    def test_with_max_value(self):
-        """Test with maximum value constraint"""
+        
+        # Custom max
         assert validate_number("5", max_val=10) is True
         assert validate_number("10", max_val=10) is True
-        assert validate_number("11", max_val=10) is False
-    
-    def test_with_min_and_max_value(self):
-        """Test with both min and max value constraints"""
+        
+        # Custom range
         assert validate_number("5", min_val=1, max_val=10) is True
         assert validate_number("1", min_val=1, max_val=10) is True
         assert validate_number("10", min_val=1, max_val=10) is True
+    
+    def test_validate_number_invalid(self):
+        """Test validate_number with invalid numbers"""
+        # Not a number
+        assert validate_number("abc") is False
+        assert validate_number("1.5") is False
+        assert validate_number("1,5") is False
+        assert validate_number("1a") is False
+        assert validate_number("") is False
+        assert validate_number(" ") is False
+        
+        # Below min
+        assert validate_number("0") is False  # Default min is 1
+        assert validate_number("4", min_val=5) is False
+        
+        # Above max
+        assert validate_number("11", max_val=10) is False
+        
+        # Outside range
         assert validate_number("0", min_val=1, max_val=10) is False
         assert validate_number("11", min_val=1, max_val=10) is False
     
-    def test_non_numeric_strings(self):
-        """Test with non-numeric strings"""
-        assert validate_number("") is False
-        assert validate_number("abc") is False
-        assert validate_number("1a") is False
-        assert validate_number("1.5") is False  # Not an integer
-        assert validate_number("-1") is False  # Negative number
-
-
-class TestValidateUnit:
-    """Tests for validate_unit function"""
-    
-    def test_valid_units(self):
-        """Test with valid units"""
+    def test_validate_unit_valid(self):
+        """Test validate_unit with valid units"""
         assert validate_unit("days") is True
         assert validate_unit("months") is True
-        assert validate_unit("DAYS") is True  # Case insensitive
-        assert validate_unit("MONTHS") is True  # Case insensitive
-        assert validate_unit("Days") is True  # Mixed case
-        assert validate_unit("Months") is True  # Mixed case
+        assert validate_unit("DAYS") is True
+        assert validate_unit("MONTHS") is True
+        assert validate_unit("Days") is True
+        assert validate_unit("Months") is True
     
-    def test_invalid_units(self):
-        """Test with invalid units"""
-        assert validate_unit("") is False
+    def test_validate_unit_invalid(self):
+        """Test validate_unit with invalid units"""
         assert validate_unit("day") is False
         assert validate_unit("month") is False
         assert validate_unit("weeks") is False
         assert validate_unit("years") is False
-        assert validate_unit("d") is False
-        assert validate_unit("m") is False
-
-
-class TestValidateZodiacSign:
-    """Tests for validate_zodiac_sign function"""
+        assert validate_unit("") is False
+        assert validate_unit(" days") is False
+        assert validate_unit("days ") is False
     
-    def test_valid_zodiac_signs(self):
-        """Test with valid zodiac signs"""
+    def test_validate_zodiac_sign_valid(self):
+        """Test validate_zodiac_sign with valid signs"""
         valid_signs = [
             "овен", "телец", "близнецы", "рак", "лев",
             "дева", "весы", "скорпион", "стрелец",
@@ -114,14 +121,22 @@ class TestValidateZodiacSign:
         
         for sign in valid_signs:
             assert validate_zodiac_sign(sign) is True
-            assert validate_zodiac_sign(sign.upper()) is True  # Case insensitive
-            assert validate_zodiac_sign(sign.capitalize()) is True  # Mixed case
+            assert validate_zodiac_sign(sign.upper()) is True
+            assert validate_zodiac_sign(sign.capitalize()) is True
     
-    def test_invalid_zodiac_signs(self):
-        """Test with invalid zodiac signs"""
-        assert validate_zodiac_sign("") is False
-        assert validate_zodiac_sign("овн") is False  # Typo
-        assert validate_zodiac_sign("рыба") is False  # Singular
-        assert validate_zodiac_sign("aries") is False  # English
-        assert validate_zodiac_sign("123") is False
-        assert validate_zodiac_sign("знак") is False
+    def test_validate_zodiac_sign_invalid(self):
+        """Test validate_zodiac_sign with invalid signs"""
+        invalid_signs = [
+            "овн",  # Typo
+            "рыба",  # Singular
+            "скорпеон",  # Typo
+            "змея",  # Not a zodiac sign
+            "dragon",  # English
+            "aries",  # English
+            "",  # Empty
+            " овен",  # Extra space
+            "овен ",  # Extra space
+        ]
+        
+        for sign in invalid_signs:
+            assert validate_zodiac_sign(sign) is False

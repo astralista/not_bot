@@ -1,131 +1,63 @@
-import os
 import pytest
 import sqlite3
 from unittest.mock import MagicMock, AsyncMock
-from datetime import datetime
+from telegram import Update, User, Message, Chat, CallbackQuery
+from telegram.ext import ContextTypes
 
 from src.core.database import Database
-from src.bot.models.medication import Medication
-from src.bot.models.user import User
 
 
 @pytest.fixture
-def mock_db():
-    """
-    Fixture for mocking the Database class
-    """
-    db = MagicMock(spec=Database)
-    
-    # Mock methods
-    db.get_medications.return_value = []
-    db.get_medication_by_id.return_value = None
-    db.get_all_medications.return_value = []
-    db.get_all_users.return_value = []
-    db.get_user_zodiac.return_value = None
-    
+def in_memory_db():
+    """Create an in-memory database for testing"""
+    db = Database(":memory:")
     return db
 
 
 @pytest.fixture
-def mock_bot_app():
-    """
-    Fixture for mocking the bot application
-    """
-    app = MagicMock()
-    app.bot = MagicMock()
-    app.bot.send_message = AsyncMock()
-    app.logger = MagicMock()
-    
-    return app
-
-
-@pytest.fixture
 def mock_update():
-    """
-    Fixture for mocking the Update object from python-telegram-bot
-    """
-    update = MagicMock()
-    update.effective_user = MagicMock()
-    update.effective_user.id = 12345
-    update.message = MagicMock()
-    update.message.from_user = MagicMock()
-    update.message.from_user.id = 12345
-    update.message.reply_text = AsyncMock()
-    update.callback_query = MagicMock()
-    update.callback_query.answer = AsyncMock()
-    update.callback_query.edit_message_text = AsyncMock()
+    """Create a mock Update object for testing"""
+    update = MagicMock(spec=Update)
+    
+    # Mock user
+    user = MagicMock(spec=User)
+    user.id = 12345
+    user.first_name = "Test"
+    user.last_name = "User"
+    user.username = "testuser"
+    
+    # Mock chat
+    chat = MagicMock(spec=Chat)
+    chat.id = 12345
+    
+    # Mock message
+    message = MagicMock(spec=Message)
+    message.from_user = user
+    message.chat = chat
+    message.text = "Test message"
+    message.reply_text = AsyncMock()
+    
+    # Mock callback query
+    callback_query = MagicMock(spec=CallbackQuery)
+    callback_query.from_user = user
+    callback_query.message = message
+    callback_query.data = "test_data"
+    callback_query.answer = AsyncMock()
+    callback_query.edit_message_text = AsyncMock()
+    
+    # Set up the update object
+    update.effective_user = user
+    update.message = message
+    update.callback_query = callback_query
     
     return update
 
 
 @pytest.fixture
 def mock_context():
-    """
-    Fixture for mocking the Context object from python-telegram-bot
-    """
-    context = MagicMock()
+    """Create a mock Context object for testing"""
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
     context.user_data = {}
     context.args = []
     
     return context
-
-
-@pytest.fixture
-def sample_medication():
-    """
-    Fixture for creating a sample Medication object
-    """
-    return Medication(
-        id=1,
-        user_id=12345,
-        name="Test Medication",
-        dose_per_intake=2,
-        intakes_per_day=3,
-        start_date="2025-01-01",
-        duration_value=10,
-        duration_unit="days",
-        break_value=5,
-        break_unit="days",
-        cycles=2
-    )
-
-
-@pytest.fixture
-def sample_medication_tuple():
-    """
-    Fixture for creating a sample medication tuple (as returned from DB)
-    """
-    return (
-        1,                  # id
-        12345,              # user_id
-        "Test Medication",  # name
-        2,                  # dose_per_intake
-        3,                  # intakes_per_day
-        "2025-01-01",       # start_date
-        10,                 # duration_value
-        "days",             # duration_unit
-        5,                  # break_value
-        "days",             # break_unit
-        2                   # cycles
-    )
-
-
-@pytest.fixture
-def sample_user():
-    """
-    Fixture for creating a sample User object
-    """
-    return User(
-        user_id=12345,
-        zodiac_sign="овен"
-    )
-
-
-@pytest.fixture
-def in_memory_db():
-    """
-    Fixture for creating an in-memory SQLite database for testing
-    """
-    db = Database(":memory:")
-    yield db
-    # No need to close the connection as it's in-memory
