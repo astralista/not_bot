@@ -16,3 +16,10 @@ tzlocal==5.3.1
 requests==2.31.0  # Для API запросов
 beautifulsoup4==4.12.3  # Для парсинга гороскопов
 python-telegram-bot[job-queue]==20.3  # Для планировщика
+
+# Testing dependencies
+pytest==7.4.0
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.11.1
+freezegun==1.2.2  # Для тестирования с фиксированным временем
