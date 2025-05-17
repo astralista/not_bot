@@ -1,6 +1,8 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timedelta
+from telegram.error import BadRequest
 from ...core.database import Database
+from ...core.logger import logger
 from ...utils.helpers import calculate_next_notification
 
 class NotificationService:
@@ -18,6 +20,7 @@ class NotificationService:
         self.db = db
         self.app = bot_application
         self.scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
+        self.logger = logger.getChild('NotificationService')
     
     def start(self):
         """
@@ -29,15 +32,20 @@ class NotificationService:
         """
         Настройка ежедневных утренних уведомлений
         """
+        self.scheduler.add_job(
+            self.send_daily_notifications_to_all,
+            'cron',
+            hour=20,
+            minute=8,
+            id="daily_notifications"
+        )
+    
+    async def send_daily_notifications_to_all(self):
+        """
+        Отправка ежедневных утренних уведомлений всем пользователям
+        """
         for user_id in self.db.get_all_users():
-            self.scheduler.add_job(
-                self.send_daily_notification,
-                'cron',
-                hour=19,
-                minute=54,
-                args=[user_id],
-                id=f"daily_{user_id}"
-            )
+            await self.send_daily_notification(user_id)
     
     async def send_daily_notification(self, user_id: int):
         """
@@ -62,7 +70,7 @@ class NotificationService:
             
             await self._send_message(user_id, message)
         except Exception as e:
-            self.app.logger.error(f"Ошибка отправки ежедневного уведомления: {e}")
+            self.logger.error(f"Ошибка отправки ежедневного уведомления для пользователя {user_id}: {e}")
     
     async def send_medication_reminder(self, user_id: int, med_name: str, dose: int):
         """
@@ -96,12 +104,12 @@ class NotificationService:
                 try:
                     text += format_medication_info(med) + "\n\n"
                 except Exception as e:
-                    self.app.logger.error(f"Ошибка форматирования лекарства {med[0]}: {e}")
+                    self.logger.error(f"Ошибка форматирования лекарства {med[0]}: {e}")
                     text += f"⚠️ Лекарство ID {med[0]} - ошибка данных\n\n"
             
             await self._send_message(user_id, text, parse_mode="HTML")
         except Exception as e:
-            self.app.logger.error(f"Ошибка отправки списка лекарств: {e}")
+            self.logger.error(f"Ошибка отправки списка лекарств: {e}")
             await self._send_message(user_id, "❌ Произошла ошибка при загрузке данных. Попробуйте позже.")
     
     async def _send_message(self, user_id: int, text: str, parse_mode=None):
@@ -119,5 +127,10 @@ class NotificationService:
                 text=text, 
                 parse_mode=parse_mode
             )
+        except BadRequest as e:
+            if "Chat not found" in str(e):
+                self.logger.warning(f"Чат с пользователем {user_id} не найден. Возможно, пользователь не начал чат с ботом.")
+            else:
+                self.logger.error(f"Ошибка BadRequest при отправке сообщения пользователю {user_id}: {e}")
         except Exception as e:
-            self.app.logger.error(f"Ошибка отправки сообщения: {e}")
+            self.logger.error(f"Ошибка отправки сообщения пользователю {user_id}: {e}")

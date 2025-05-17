@@ -153,9 +153,9 @@ class Database:
         return cursor.fetchall()
 
     def get_all_users(self):
-        """Возвращает список ID пользователей (чисел), которые добавили лекарства"""
+        """Возвращает список ID пользователей (чисел), которые зарегистрированы в боте"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT DISTINCT user_id FROM medications")
+        cursor.execute("SELECT DISTINCT user_id FROM user_settings")
         return [user_id for (user_id,) in cursor.fetchall()]  # Явное распаковывание кортежа
 
     def get_medication_field_names(self):
