@@ -15,8 +15,8 @@ from ...utils.helpers import format_medication_info
     DURATION_VALUE, DURATION_UNIT,
     BREAK_VALUE, BREAK_UNIT, CYCLES,
     EDIT_CHOICE, EDIT_FIELD,
-    ZODIAC_SIGN
-) = range(12)
+    ZODIAC_SIGN, USER_NAME, HOROSCOPE_CHOICE, WEATHER_CHOICE
+) = range(15)
 
 
 class MedicationHandlers:
@@ -46,9 +46,9 @@ class MedicationHandlers:
             int: Следующее состояние разговора или None
         """
         user_id = update.effective_user.id
-        zodiac_sign = self.db.get_user_zodiac(user_id)
+        user_settings = self.db.get_user_settings(user_id)
         
-        if zodiac_sign:
+        if user_settings:
             # Если пользователь уже есть в базе, показываем обычное меню
             keyboard = [["/add", "/list"], ["/edit", "/delete"]]
             reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -62,12 +62,107 @@ class MedicationHandlers:
             # Если пользователя нет в базе, начинаем знакомство
             await update.message.reply_text(
                 "👋 Привет! Я бот-напоминатель о лекарствах.\n\n"
-                "Давайте познакомимся! Какой у вас знак зодиака?\n\n"
-                "Доступные знаки: овен, телец, близнецы, рак, лев, дева, "
-                "весы, скорпион, стрелец, козерог, водолей, рыбы"
+                "Давайте познакомимся!\n\n"
+                "Пройдите небольшой опросник:\n\n"
+                "Как вас зовут?"
             )
-            return ZODIAC_SIGN
+            return USER_NAME
             
+    async def set_user_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Обработка ввода имени пользователя при первом запуске
+        
+        Args:
+            update (Update): Объект обновления
+            context (ContextTypes.DEFAULT_TYPE): Контекст
+        
+        Returns:
+            int: Следующее состояние разговора
+        """
+        name = update.message.text.strip()
+        
+        if not name:
+            await update.message.reply_text("Имя не может быть пустым. Пожалуйста, введите ваше имя:")
+            return USER_NAME
+            
+        # Сохраняем имя в контексте для последующего сохранения
+        context.user_data["user_name"] = name
+        
+        # Переходим к следующему вопросу
+        keyboard = [
+            [InlineKeyboardButton("Да", callback_data="horoscope_yes")],
+            [InlineKeyboardButton("Нет", callback_data="horoscope_no")]
+        ]
+        
+        await update.message.reply_text(
+            f"Приятно познакомиться, {name}!\n\n"
+            f"Присылать ли вам гороскоп?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return HOROSCOPE_CHOICE
+        
+    async def set_horoscope_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Обработка выбора получения гороскопа
+        
+        Args:
+            update (Update): Объект обновления
+            context (ContextTypes.DEFAULT_TYPE): Контекст
+        
+        Returns:
+            int: Следующее состояние разговора
+        """
+        query = update.callback_query
+        await query.answer()
+        
+        choice = query.data
+        send_horoscope = choice == "horoscope_yes"
+        
+        # Сохраняем выбор в контексте
+        context.user_data["send_horoscope"] = send_horoscope
+        
+        # Переходим к следующему вопросу
+        keyboard = [
+            [InlineKeyboardButton("Да", callback_data="weather_yes")],
+            [InlineKeyboardButton("Нет", callback_data="weather_no")]
+        ]
+        
+        await query.edit_message_text(
+            f"{'✅' if send_horoscope else '❌'} Гороскоп: {send_horoscope}\n\n"
+            f"Присылать ли вам прогноз погоды?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return WEATHER_CHOICE
+        
+    async def set_weather_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Обработка выбора получения прогноза погоды
+        
+        Args:
+            update (Update): Объект обновления
+            context (ContextTypes.DEFAULT_TYPE): Контекст
+        
+        Returns:
+            int: Следующее состояние разговора
+        """
+        query = update.callback_query
+        await query.answer()
+        
+        choice = query.data
+        send_weather = choice == "weather_yes"
+        
+        # Сохраняем выбор в контексте
+        context.user_data["send_weather"] = send_weather
+        
+        # Переходим к вопросу о знаке зодиака
+        await query.edit_message_text(
+            f"{'✅' if send_weather else '❌'} Прогноз погоды: {send_weather}\n\n"
+            f"Какой у вас знак зодиака?\n\n"
+            f"Доступные знаки: овен, телец, близнецы, рак, лев, дева, "
+            f"весы, скорпион, стрелец, козерог, водолей, рыбы"
+        )
+        return ZODIAC_SIGN
+        
     async def set_user_zodiac(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Обработка ввода знака зодиака при первом запуске
@@ -92,12 +187,37 @@ class MedicationHandlers:
         
         try:
             user_id = update.effective_user.id
-            self.db.add_user_settings(user_id, zodiac_input)
+            user_name = context.user_data.get("user_name")
+            send_horoscope = context.user_data.get("send_horoscope", True)
+            send_weather = context.user_data.get("send_weather", False)
             
-            await update.message.reply_text(
-                f"♌ Отлично! Ваш знак зодиака: {zodiac_input.capitalize()}\n\n"
-                f"Теперь вы будете получать персональный гороскоп!"
+            # Логируем данные для отладки
+            self.logger.info(f"Сохранение настроек пользователя: user_id={user_id}, name={user_name}, "
+                            f"zodiac_sign={zodiac_input}, send_horoscope={send_horoscope}, send_weather={send_weather}")
+            
+            # Проверяем, что все данные корректны
+            if user_id is None:
+                raise ValueError("user_id не может быть None")
+            
+            # Сохраняем все настройки пользователя
+            self.db.add_user_settings(
+                user_id=user_id,
+                name=user_name,
+                zodiac_sign=zodiac_input,
+                send_horoscope=send_horoscope,
+                send_weather=send_weather
             )
+            
+            # Формируем сообщение с итогами опросника
+            message = (
+                f"✅ Отлично! Ваши настройки сохранены:\n\n"
+                f"👤 Имя: {user_name}\n"
+                f"♌ Знак зодиака: {zodiac_input.capitalize()}\n"
+                f"🔮 Гороскоп: {'Да' if send_horoscope else 'Нет'}\n"
+                f"🌤 Прогноз погоды: {'Да' if send_weather else 'Нет'}\n\n"
+            )
+            
+            await update.message.reply_text(message)
             
             # Показываем основное меню
             keyboard = [["/add", "/list"], ["/edit", "/delete"]]
@@ -110,7 +230,7 @@ class MedicationHandlers:
             return ConversationHandler.END
             
         except Exception as e:
-            self.logger.error(f"Ошибка при сохранении знака зодиака: {e}")
+            self.logger.error(f"Ошибка при сохранении настроек пользователя: {e}", exc_info=True)
             await update.message.reply_text("❌ Произошла ошибка при сохранении. Попробуйте позже.")
             return ConversationHandler.END
     
