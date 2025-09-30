@@ -35,7 +35,7 @@ class NotificationService:
         self.scheduler.add_job(
             self.send_daily_notifications_to_all,
             'cron',
-            hour=8,
+            hour=9,
             minute=0,
             id="daily_notifications"
         )
@@ -125,7 +125,7 @@ class NotificationService:
             await self.app.bot.send_message(
                 chat_id=user_id, 
                 text=text, 
-                parse_mode=parse_mode
+                parse_mode='HTML'
             )
         except BadRequest as e:
             if "Chat not found" in str(e):

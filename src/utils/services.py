@@ -57,14 +57,37 @@ class Services:
             # Криптовалюты
             crypto_data = requests.get(
                 "https://min-api.cryptocompare.com/data/pricemulti",
-                params={'fsyms': 'BTC,ETH,TON', 'tsyms': 'USD'}
+                params={'fsyms': 'BTC,ETH,TON,SOL,NC,GRASS', 'tsyms': 'USD'}
             ).json()
 
-            return (f"💱 Курсы:\n"
-                    f"USD/RUB: {usd_rub:.2f}\n"
-                    f"BTC: ${crypto_data['BTC']['USD']}\n"
-                    f"ETH: ${crypto_data['ETH']['USD']}\n"
-                    f"TON: ${crypto_data['TON']['USD']}")
+            # Функция для форматирования чисел с разделителем тысяч
+            def format_price(price):
+                # Форматируем с разделителями тысяч и 2 знаками после запятой
+                return f"{price:,.2f}".replace(",", "'")
+
+            # Собираем все данные
+            lines = []
+            lines.append(("USD/RUB", format_price(usd_rub)))  # Применяем форматирование
+
+            for coin in ['BTC', 'ETH', 'TON', 'SOL', 'NC', 'GRASS']:
+                price = crypto_data[coin]['USD']
+                formatted_price = f"${format_price(price)}"  # Применяем форматирование
+                lines.append((coin, formatted_price))
+
+            # Находим максимальные длины
+            max_name_len = max(len(name) for name, _ in lines)
+            max_price_len = max(len(price) for _, price in lines)
+
+            # Формируем результат с моноширинным шрифтом через <code>
+            result = ["<b>💱 Курсы:</b>"]
+            for name, price in lines:
+                # Создаем строку с точками и выравниванием
+                dots_needed = max_name_len - len(name) + 3  # +3 для отступа
+                dots = '.' * dots_needed
+                result.append(f"<code>{name}: {dots}{price}</code>")
+
+            return "\n".join(result)
+
         except Exception as e:
             logging.error(f"Exchange API error: {e}")
             return "Не удалось получить курсы валют"
