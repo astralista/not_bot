@@ -13,7 +13,7 @@ from telegram.ext import (
 
 from src.core.database import Database
 from src.core.logger import logger
-from src.bot.handlers.medication_handlers import MedicationHandlers, NAME, DOSE, INTAKES, START_DATE, DURATION_VALUE, DURATION_UNIT, BREAK_VALUE, BREAK_UNIT, CYCLES, EDIT_CHOICE, EDIT_FIELD, ZODIAC_SIGN
+from src.bot.handlers.medication_handlers import MedicationHandlers, NAME, DOSE, INTAKES, START_DATE, DURATION_VALUE, DURATION_UNIT, BREAK_VALUE, BREAK_UNIT, CYCLES, EDIT_CHOICE, EDIT_FIELD, ZODIAC_SIGN, USER_NAME, HOROSCOPE_CHOICE, WEATHER_CHOICE
 from src.bot.handlers.notification_handlers import NotificationHandlers
 from src.bot.services.notification_service import NotificationService
 from src.bot.services.scheduler_service import SchedulerService
@@ -31,10 +31,13 @@ def setup_handlers(application, db, logger):
     med_handlers = MedicationHandlers(db, logger)
     notif_handlers = NotificationHandlers(db, logger)
     
-    # Команда /start с обработкой знака зодиака при первом запуске
+    # Команда /start с опросником при первом запуске
     start_conv = ConversationHandler(
         entry_points=[CommandHandler("start", med_handlers.start)],
         states={
+            USER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, med_handlers.set_user_name)],
+            HOROSCOPE_CHOICE: [CallbackQueryHandler(med_handlers.set_horoscope_choice, pattern="^horoscope_(yes|no)$")],
+            WEATHER_CHOICE: [CallbackQueryHandler(med_handlers.set_weather_choice, pattern="^weather_(yes|no)$")],
             ZODIAC_SIGN: [MessageHandler(filters.TEXT & ~filters.COMMAND, med_handlers.set_user_zodiac)],
         },
         fallbacks=[CommandHandler("cancel", med_handlers.cancel)],
