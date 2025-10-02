@@ -132,6 +132,7 @@ async def main():
     
     # Инициализация базы данных
     db = Database("data/users.db")
+    db.create_tables()
     
     # Инициализация приложения
     application = Application.builder().token(TOKEN).build()

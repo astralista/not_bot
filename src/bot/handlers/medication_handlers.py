@@ -715,12 +715,9 @@ class MedicationHandlers:
     # Метод для просмотра списка лекарств
     async def list_medications(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        Просмотр списка лекарств
-        
-        Args:
-            update (Update): Объект обновления
-            context (ContextTypes.DEFAULT_TYPE): Контекст
+        Просмотр списка лекарств с автоматическим возобновлением этапов после перерыва и подробным логированием
         """
+        from ..models.medication import Medication
         try:
             meds = self.db.get_medications(update.message.from_user.id)
             if not meds:
@@ -729,13 +726,51 @@ class MedicationHandlers:
 
             text = "💊 Ваши лекарства:\n\n"
             current_date = datetime.now().date()
+            updated = False
 
-            for med in meds:
+            for med_tuple in meds:
                 try:
-                    text += format_medication_info(med) + "\n\n"
+                    # Преобразуем кортеж из БД в объект Medication
+                    med = Medication.from_tuple(med_tuple)
+                    self.logger.info(f"[DEBUG] Лекарство: id={med.id}, name={med.name}, start_date={med.start_date}, cycles={med.cycles}")
+                    days_left = med.get_days_left()
+                    self.logger.info(f"[DEBUG] get_days_left={days_left} для id={med.id}")
+                    # Если курс завершён или просрочен, но есть ещё циклы, проверяем дату следующего цикла
+                    if days_left <= 0 and med.cycles > 1:
+                        next_cycle_date = med.get_next_cycle_date()
+                        self.logger.info(f"[DEBUG] get_next_cycle_date={next_cycle_date} для id={med.id}")
+                        self.logger.info(f"[DEBUG] current_date={current_date}, next_cycle_date={next_cycle_date}")
+                        if next_cycle_date and current_date >= next_cycle_date:
+                            self.logger.info(f"[DEBUG] Автоматически возобновляем этап для id={med.id}")
+                            # Автоматически возобновляем этап: обновляем дату начала и уменьшаем cycles
+                            med.start_date = next_cycle_date.strftime("%Y-%m-%d")
+                            med.cycles -= 1
+                            # Обновляем в БД
+                            self.db.update_medication(med.id, start_date=med.start_date, cycles=med.cycles)
+                            updated = True
+                            # Пересчитываем days_left для нового этапа
+                            days_left = med.get_days_left()
+                            self.logger.info(f"[DEBUG] Новый days_left={days_left} для id={med.id} после обновления")
+                        else:
+                            self.logger.info(f"[DEBUG] Не наступила дата следующего цикла для id={med.id}")
+                    # Форматируем вывод
+                    med_info = format_medication_info((
+                        med.id, med.user_id, med.name, med.dose_per_intake, med.intakes_per_day,
+                        med.start_date, med.duration_value, med.duration_unit, med.break_value,
+                        med.break_unit, med.cycles
+                    ))
+                    # Добавляем информацию о следующем цикле, если есть
+                    if days_left == 0 and med.cycles > 1:
+                        next_cycle_date = med.get_next_cycle_date()
+                        if next_cycle_date:
+                            med_info += f"\nСледующий этап начнётся: <b>{next_cycle_date.strftime('%d.%m.%Y')}</b>"
+                    text += med_info + "\n\n"
                 except Exception as e:
-                    self.logger.error(f"Ошибка обработки лекарства ID {med[0]}: {e}")
-                    text += f"⚠️ Лекарство ID {med[0]} - ошибка данных\n\n"
+                    self.logger.error(f"Ошибка обработки лекарства ID {med_tuple[0]}: {e}")
+                    text += f"⚠️ Лекарство ID {med_tuple[0]} - ошибка данных\n\n"
+
+            if updated:
+                self.logger.info("Некоторые лекарства были автоматически переведены на следующий этап.")
 
             await update.message.reply_text(text, parse_mode="HTML")
 

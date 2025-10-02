@@ -1,3 +1,4 @@
+
 import sqlite3
 from sqlite3 import Error
 from ..core.logger import logger
@@ -5,41 +6,83 @@ from ..core.logger import logger
 class Database:
     def __init__(self, db_file):
         self.logger = logger.getChild('Database')
-        self.conn = self.create_connection(db_file)
-        self.create_table()
-        self.create_user_settings_table()  # Создаем таблицу настроек при инициализации
-        self.update_user_settings_table()  # Обновляем структуру таблицы, если нужно
+        self.connection = sqlite3.connect(db_file)
 
-    def create_connection(self, db_file):
-        conn = None
-        try:
-            conn = sqlite3.connect(db_file)
-            return conn
-        except Error as e:
-            print(e)
-        return conn
-
-    def create_table(self):
-        sql = """
-        CREATE TABLE IF NOT EXISTS medications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            dose_per_intake INTEGER NOT NULL,
-            intakes_per_day INTEGER NOT NULL,
-            start_date TEXT NOT NULL,
-            duration_value INTEGER NOT NULL,
-            duration_unit TEXT NOT NULL,
-            break_value INTEGER NOT NULL,
-            break_unit TEXT NOT NULL,
-            cycles INTEGER DEFAULT 1
-        );
+    def create_tables(self):
         """
-        self.conn.execute(sql)
-        self.conn.commit()
+        Создание всех необходимых таблиц, включая историю приёмов
+        """
+        with self.connection:
+            self.connection.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT,
+                    zodiac_sign TEXT,
+                    send_horoscope INTEGER,
+                    send_weather INTEGER
+                )
+            ''')
+            self.connection.execute('''
+                CREATE TABLE IF NOT EXISTS medications (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER,
+                    name TEXT,
+                    dose_per_intake INTEGER,
+                    intakes_per_day INTEGER,
+                    start_date TEXT,
+                    duration_value INTEGER,
+                    duration_unit TEXT,
+                    break_value INTEGER,
+                    break_unit TEXT,
+                    cycles INTEGER
+                )
+            ''')
+            self.connection.execute('''
+                CREATE TABLE IF NOT EXISTS medication_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER,
+                    user_id INTEGER,
+                    event_type TEXT,
+                    event_date TEXT,
+                    cycles_before INTEGER,
+                    cycles_after INTEGER,
+                    start_date_before TEXT,
+                    start_date_after TEXT,
+                    comment TEXT
+                )
+            ''')
+        self.migrate_medication_history()
+
+    def migrate_medication_history(self):
+        """
+        Заполнить таблицу medication_history начальными данными из medications (однократно)
+        """
+        with self.connection:
+            meds = self.connection.execute('SELECT * FROM medications').fetchall()
+            for med in meds:
+                exists = self.connection.execute(
+                    'SELECT 1 FROM medication_history WHERE medication_id = ? AND event_type = ? LIMIT 1',
+                    (med[0], 'start')
+                ).fetchone()
+                if not exists:
+                    self.connection.execute(
+                        '''INSERT INTO medication_history (
+                            medication_id, user_id, event_type, event_date, cycles_before, cycles_after, start_date_before, start_date_after, comment
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        (
+                            med[0], # medication_id
+                            med[1], # user_id
+                            'start',
+                            med[5], # start_date (используем как дату события)
+                            med[10], # cycles_before
+                            med[10], # cycles_after (на момент старта они равны)
+                            med[5],  # start_date_before
+                            med[5],  # start_date_after
+                            'Initial import from medications'
+                        )
+                    )
 
     def create_user_settings_table(self):
-        """Создает таблицу для настроек пользователя, если её нет"""
         sql = """
         CREATE TABLE IF NOT EXISTS user_settings (
             user_id INTEGER PRIMARY KEY,
@@ -49,65 +92,32 @@ class Database:
             send_weather INTEGER DEFAULT 0
         );
         """
-        self.conn.execute(sql)
-        self.conn.commit()
-        
+        self.connection.execute(sql)
+        self.connection.commit()
+
     def update_user_settings_table(self):
-        """Обновляет структуру таблицы user_settings, если она уже существует"""
         try:
-            # Проверяем, существует ли таблица
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_settings'")
             if not cursor.fetchone():
                 self.logger.info("Таблица user_settings не существует, обновление не требуется")
                 return
-                
-            # Проверяем структуру таблицы
             cursor.execute("PRAGMA table_info(user_settings)")
             columns = {column[1]: column for column in cursor.fetchall()}
             self.logger.info(f"Текущие колонки в таблице user_settings: {list(columns.keys())}")
-            
-            # Добавляем недостающие колонки
             if 'name' not in columns:
                 self.logger.info("Добавляем колонку 'name' в таблицу user_settings")
-                self.conn.execute("ALTER TABLE user_settings ADD COLUMN name TEXT")
-                
-            if 'send_horoscope' not in columns:
-                self.logger.info("Добавляем колонку 'send_horoscope' в таблицу user_settings")
-                self.conn.execute("ALTER TABLE user_settings ADD COLUMN send_horoscope INTEGER DEFAULT 1")
-                
-            if 'send_weather' not in columns:
-                self.logger.info("Добавляем колонку 'send_weather' в таблицу user_settings")
-                self.conn.execute("ALTER TABLE user_settings ADD COLUMN send_weather INTEGER DEFAULT 0")
-                
-            self.conn.commit()
-            self.logger.info("Структура таблицы user_settings успешно обновлена")
-            
+                self.connection.execute("ALTER TABLE user_settings ADD COLUMN name TEXT")
         except Exception as e:
-            self.logger.error(f"Ошибка при обновлении структуры таблицы user_settings: {e}", exc_info=True)
-            self.conn.rollback()
-
-    def add_medication(self, user_id, name, dose_per_intake, intakes_per_day, start_date,
-                      duration_value, duration_unit, break_value, break_unit, cycles=1):
-        sql = """
-        INSERT INTO medications(
-            user_id, name, dose_per_intake, intakes_per_day, start_date,
-            duration_value, duration_unit, break_value, break_unit, cycles
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        self.conn.execute(sql, (
-            user_id, name, dose_per_intake, intakes_per_day, start_date,
-            duration_value, duration_unit, break_value, break_unit, cycles
-        ))
-        self.conn.commit()
+            self.logger.error(f"Ошибка при обновлении структуры user_settings: {e}", exc_info=True)
 
     def get_medications(self, user_id):
-        cursor = self.conn.cursor()
+        cursor = self.connection.cursor()
         cursor.execute("SELECT * FROM medications WHERE user_id=?", (user_id,))
         return cursor.fetchall()
 
     def get_medication_by_id(self, med_id):
-        cursor = self.conn.cursor()
+        cursor = self.connection.cursor()
         cursor.execute("SELECT * FROM medications WHERE id=?", (med_id,))
         return cursor.fetchone()
 
@@ -131,36 +141,36 @@ class Database:
 
         # Выполняем с транзакцией
         try:
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             cursor.execute(sql, values)
-            self.conn.commit()
+            self.connection.commit()
 
             # Проверяем количество обновленных строк
             if cursor.rowcount == 0:
                 raise ValueError("Запись не найдена или данные не изменились")
 
         except sqlite3.Error as e:
-            self.conn.rollback()
+            self.connection.rollback()
             raise Exception(f"Ошибка базы данных: {str(e)}")
 
     def delete_medication(self, med_id):
-        self.conn.execute("DELETE FROM medications WHERE id=?", (med_id,))
-        self.conn.commit()
+        self.connection.execute("DELETE FROM medications WHERE id=?", (med_id,))
+        self.connection.commit()
 
     def get_all_medications(self):
-        cursor = self.conn.cursor()
+        cursor = self.connection.cursor()
         cursor.execute("SELECT * FROM medications")
         return cursor.fetchall()
 
     def get_all_users(self):
         """Возвращает список ID пользователей (чисел), которые зарегистрированы в боте"""
-        cursor = self.conn.cursor()
+        cursor = self.connection.cursor()
         cursor.execute("SELECT DISTINCT user_id FROM user_settings")
         return [user_id for (user_id,) in cursor.fetchall()]  # Явное распаковывание кортежа
 
     def get_medication_field_names(self):
         """Возвращает список полей лекарства"""
-        cursor = self.conn.cursor()
+        cursor = self.connection.cursor()
         cursor.execute("PRAGMA table_info(medications)")
         return [column[1] for column in cursor.fetchall()]
 
@@ -172,7 +182,7 @@ class Database:
                            f"zodiac_sign={zodiac_sign}, send_horoscope={send_horoscope}, send_weather={send_weather}")
             
             # Проверяем, существует ли таблица
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_settings'")
             if not cursor.fetchone():
                 self.logger.warning("Таблица user_settings не существует, создаем...")
@@ -193,7 +203,7 @@ class Database:
                 send_horoscope_int = 1 if send_horoscope else 0
                 send_weather_int = 1 if send_weather else 0
                 
-                self.conn.execute(sql, (user_id, name, zodiac_sign, send_horoscope_int, send_weather_int))
+                self.connection.execute(sql, (user_id, name, zodiac_sign, send_horoscope_int, send_weather_int))
             else:
                 # Если таблица старая, используем старый формат
                 self.logger.warning("Используем старый формат таблицы user_settings")
@@ -201,14 +211,14 @@ class Database:
                 INSERT OR REPLACE INTO user_settings (user_id, zodiac_sign)
                 VALUES (?, ?)
                 """
-                self.conn.execute(sql, (user_id, zodiac_sign))
+                self.connection.execute(sql, (user_id, zodiac_sign))
             
-            self.conn.commit()
+            self.connection.commit()
             self.logger.info("Настройки пользователя успешно сохранены")
             
         except Exception as e:
             self.logger.error(f"Ошибка при сохранении настроек пользователя: {e}", exc_info=True)
-            self.conn.rollback()
+            self.connection.rollback()
             raise
 
     def get_user_zodiac(self, user_id: int) -> str:
