@@ -4,6 +4,46 @@ from sqlite3 import Error
 from ..core.logger import logger
 
 class Database:
+
+    def get_user_settings(self, user_id: int) -> dict:
+        """Возвращает все настройки пользователя"""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_settings'")
+            if not cursor.fetchone():
+                self.logger.warning("Таблица user_settings не существует при попытке получить настройки")
+                return None
+
+            cursor.execute(
+                "SELECT * FROM user_settings WHERE user_id = ?",
+                (user_id,)
+            )
+            result = cursor.fetchone()
+            if not result:
+                return None
+
+            # Получаем имена колонок
+            column_names = [description[0] for description in cursor.description]
+            user_data = dict(zip(column_names, result))
+
+            # Преобразуем целые числа в булевы значения
+            if 'send_horoscope' in user_data:
+                user_data['send_horoscope'] = bool(user_data['send_horoscope'])
+            if 'send_weather' in user_data:
+                user_data['send_weather'] = bool(user_data['send_weather'])
+
+            # Добавляем значения по умолчанию для отсутствующих полей
+            if 'name' not in user_data:
+                user_data['name'] = None
+            if 'send_horoscope' not in user_data:
+                user_data['send_horoscope'] = True
+            if 'send_weather' not in user_data:
+                user_data['send_weather'] = False
+
+            return user_data
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении настроек пользователя: {e}", exc_info=True)
+            return None
     def __init__(self, db_file):
         self.logger = logger.getChild('Database')
         self.connection = sqlite3.connect(db_file)
@@ -222,4 +262,14 @@ class Database:
             raise
 
     def get_user_zodiac(self, user_id: int) -> str:
-        """Возвращает знак зодиака пользователя"""
+        """Возвращает знак зодиака пользователя или None, если не найден"""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT zodiac_sign FROM user_settings WHERE user_id = ?", (user_id,))
+            result = cursor.fetchone()
+            if result and result[0]:
+                return result[0]
+            return None
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении знака зодиака пользователя: {e}", exc_info=True)
+            return None
