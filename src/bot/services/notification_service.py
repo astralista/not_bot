@@ -35,8 +35,8 @@ class NotificationService:
         self.scheduler.add_job(
             self.send_daily_notifications_to_all,
             'cron',
-            hour=14,
-            minute=40,
+            hour=9,
+            minute=0,
             id="daily_notifications"
         )
     
