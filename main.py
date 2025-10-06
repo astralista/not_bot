@@ -76,6 +76,8 @@ def setup_handlers(application, db, logger):
     
     # Просмотр списка лекарств
     application.add_handler(CommandHandler("list", med_handlers.list_medications))
+    # Ручной вызов уведомления
+    application.add_handler(CommandHandler("ave", med_handlers.ave_notify))
     
     # Удаление лекарства
     application.add_handler(CommandHandler("delete", med_handlers.delete_medication))

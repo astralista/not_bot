@@ -20,6 +20,21 @@ from ...utils.helpers import format_medication_info
 
 
 class MedicationHandlers:
+    async def ave_notify(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Ручной вызов ежедневного уведомления (команда /ave)
+        """
+        user_id = update.effective_user.id
+        # Импортируем NotificationService здесь, чтобы избежать циклических импортов
+        from ..services.notification_service import NotificationService
+        # Получаем экземпляр приложения из контекста
+        app = context.application
+        # Получаем экземпляр базы данных
+        db = self.db
+        # Создаем временный сервис уведомлений (или используем существующий, если есть способ получить)
+        notification_service = NotificationService(db, app)
+        await notification_service.send_daily_notification(user_id)
+        await update.message.reply_text("✅ Уведомление отправлено!")
     """
     Обработчики команд для управления лекарствами
     """
